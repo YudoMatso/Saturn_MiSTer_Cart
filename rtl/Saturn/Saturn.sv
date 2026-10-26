@@ -112,6 +112,7 @@ module Saturn
 	
 `ifndef STV_BUILD
 	input      [ 2: 0] CART_MODE,
+	output             CART_CS0_WR,
 `else
 	input              STV_5838_MODE,
 	input      [ 3: 0] STV_5881_MODE,
@@ -1266,6 +1267,11 @@ module Saturn
 		.MEM_WE(CART_MEM_WE),
 		.MEM_RD(CART_MEM_RD),
 		.MEM_RDY(CART_MEM_RDY)
+		
+`ifndef STV_BUILD
+		,
+		.CS0_WR_DET(CART_CS0_WR)
+`endif
 		
 `ifdef STV_BUILD
 		,
