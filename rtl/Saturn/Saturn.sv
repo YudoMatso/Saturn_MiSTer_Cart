@@ -112,6 +112,7 @@ module Saturn
 	
 `ifndef STV_BUILD
 	input      [ 2: 0] CART_MODE,
+	input      [26: 1] CART_ROM_SIZE,
 	output             CART_CS0_WR,
 `else
 	input              STV_5838_MODE,
@@ -1270,6 +1271,7 @@ module Saturn
 		
 `ifndef STV_BUILD
 		,
+		.ROM_SIZE(CART_ROM_SIZE),
 		.CS0_WR_DET(CART_CS0_WR)
 `endif
 		

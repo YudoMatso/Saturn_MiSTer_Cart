@@ -140,12 +140,14 @@ module emu
 		"FS3,BIN,Load cartridge;",
 		"O[4],Reset on insert,Yes,No;",
 		"-;",
-		"O[23:21],Cartridge,Auto,ROM 2M,DRAM 1M,DRAM 4M,DRAM 6M DEV,BACKUP,None,ROM 32M;",
+		"O[23:21],Cartridge,Auto,ROM 2M,DRAM 1M,DRAM 4M,DRAM 6M DEV,BACKUP,None,ROM 32/48M;",
 		"h9-,Auto cartridge:        None;",
 		"hA-,Auto cartridge:     DRAM 1M;",
 		"hB-,Auto cartridge:     DRAM 4M;",
 		"hC-,ROM 32M: no CS0 write;",
 		"hD-,ROM 32M: CS0 WRITE SEEN!;",
+		"hE-,ROM 48M: no ROM write;",
+		"hF-,ROM 48M: ROM WRITE SEEN!;",
 		"O[35:33],Region,Japan,Taiwan,USA,Brazil,Korea,Asia,Europe,Auto;",
 `else
 		"ST-V;;",
@@ -331,7 +333,7 @@ module emu
 	);
 	
 `ifndef STV_BUILD
-	assign menumask = {2'b00, (cart_type == 3'd7 && CART_CS0_WR), (cart_type == 3'd7 && !CART_CS0_WR), (cart_sel == 3'd0 && cart_auto == 3'd3), (cart_sel == 3'd0 && cart_auto == 3'd2), (cart_sel == 3'd0 && cart_auto == 3'd0), (status[56:55] != 2'b00), ~lg_p2_ena, ~lg_p1_ena, snac, 1'b1, 1'b1, ~status[8], 1'b1, ~bk_ena};
+	assign menumask = {(cart_type == 3'd7 && cart_rom48 && CART_CS0_WR), (cart_type == 3'd7 && cart_rom48 && !CART_CS0_WR), (cart_type == 3'd7 && !cart_rom48 && CART_CS0_WR), (cart_type == 3'd7 && !cart_rom48 && !CART_CS0_WR), (cart_sel == 3'd0 && cart_auto == 3'd3), (cart_sel == 3'd0 && cart_auto == 3'd2), (cart_sel == 3'd0 && cart_auto == 3'd0), (status[56:55] != 2'b00), ~lg_p2_ena, ~lg_p1_ena, snac, 1'b1, 1'b1, ~status[8], 1'b1, ~bk_ena};
 `else
 	assign menumask = {(status[56:55] != 2'b00), 1'b1, 1'b1, ~status[75], 1'b1, 1'b1, ~status[8], ~STV_ALTBIOS, 1'b0};
 `endif
@@ -364,6 +366,16 @@ module emu
 	reg  [2:0] cart_auto = 3'd0;
 	wire [2:0] cart_type = (cart_sel == 3'd0) ? cart_auto : (cart_sel == 3'd6) ? 3'd0 : cart_sel;
 	wire       CART_CS0_WR;
+	
+	//ROM 32/48M: size of the loaded cartridge file (in words); > 32M maps the rest on CS1
+	reg [26:1] cart_rom_size = '0;
+	always @(posedge clk_sys) begin
+		reg old_cart_download = 0;
+		old_cart_download <= cart_download;
+		if (cart_download && !old_cart_download) cart_rom_size <= '0;
+		else if (cart_download && ioctl_wr) cart_rom_size <= {1'b0,ioctl_addr[25:1]} + 26'd1;
+	end
+	wire       cart_rom48 = cart_rom_size > 26'h1000000;
 `else
 	wire [2:0] cart_type = 3'd5;
 	wire bios_sel = status[30] & STV_ALTBIOS;
@@ -673,6 +685,10 @@ module emu
 	wire [ 1: 0] HRES;
 	wire [ 1: 0] VRES;
 	wire         DCE_R;
+	wire [ 7: 0] R_CORE, G_CORE, B_CORE;
+	wire         HS_N_CORE, VS_N_CORE, DCLK_CORE, HBL_N_CORE, VBL_N_CORE;
+	wire         FIELD_CORE, INTERLACE_CORE;
+	wire [ 1: 0] HRES_CORE, VRES_CORE;
 	wire [15: 0] SOUND_L;
 	wire [15: 0] SOUND_R;
 	
@@ -859,6 +875,7 @@ module emu
 		
 `ifndef STV_BUILD
 		.CART_MODE(cart_type),
+		.CART_ROM_SIZE(cart_rom_size),
 		.CART_CS0_WR(CART_CS0_WR),
 `else
 		.STV_5881_MODE(STV_MODE[3:0] == 4'h1 ? STV_MODE[7:4] : 4'h0),
@@ -887,19 +904,19 @@ module emu
 		.STV_SW('1),
 `endif
 		
-		.R(R),
-		.G(G),
-		.B(B),
-		.DCLK(DCLK),
-		.VS_N(VS_N),
-		.HS_N(HS_N),
-		.HBL_N(HBL_N),
-		.VBL_N(VBL_N),
+		.R(R_CORE),
+		.G(G_CORE),
+		.B(B_CORE),
+		.DCLK(DCLK_CORE),
+		.VS_N(VS_N_CORE),
+		.HS_N(HS_N_CORE),
+		.HBL_N(HBL_N_CORE),
+		.VBL_N(VBL_N_CORE),
 		
-		.FIELD(FIELD),
-		.INTERLACE(INTERLACE),
-		.HRES(HRES), 				//[1]:0-normal,1-hi-res; [0]:0-320p,1-352p
-		.VRES(VRES), 				//0-224,1-240,2-256
+		.FIELD(FIELD_CORE),
+		.INTERLACE(INTERLACE_CORE),
+		.HRES(HRES_CORE), 				//[1]:0-normal,1-hi-res; [0]:0-320p,1-352p
+		.VRES(VRES_CORE), 				//0-224,1-240,2-256
 		.DCE_R(DCE_R),
 		
 		.SOUND_L(SOUND_L),
@@ -915,6 +932,36 @@ module emu
 		.DBG_RUN(DBG_RUN),
 		.DBG_EXT(DBG_EXT)
 	);
+	
+	//Loading screen: during a download the whole Saturn is held in reset and the VDP2 sync
+	//counters stop, so the OSD (loading progress bar) cannot be shown and the scaler gets no
+	//valid timing. Output a black 320x224 ~60 Hz frame with its own timing while downloading.
+	reg  [2:0] ld_div = '0;
+	reg  [8:0] ld_h = '0, ld_v = '0;
+	wire       ld_dclk = (ld_div == 3'd7);
+	always @(posedge clk_sys) begin
+		ld_div <= ld_div + 3'd1;
+		if (ld_dclk) begin
+			if (ld_h == 9'd426) begin
+				ld_h <= '0;
+				ld_v <= (ld_v == 9'd262) ? 9'd0 : ld_v + 9'd1;
+			end
+			else ld_h <= ld_h + 9'd1;
+		end
+	end
+	wire ld_scr = download;
+	assign R         = ld_scr ? 8'd0 : R_CORE;
+	assign G         = ld_scr ? 8'd0 : G_CORE;
+	assign B         = ld_scr ? 8'd0 : B_CORE;
+	assign DCLK      = ld_scr ? ld_dclk : DCLK_CORE;
+	assign HBL_N     = ld_scr ? (ld_h < 9'd320) : HBL_N_CORE;
+	assign VBL_N     = ld_scr ? (ld_v < 9'd224) : VBL_N_CORE;
+	assign HS_N      = ld_scr ? ~(ld_h >= 9'd346 && ld_h < 9'd378) : HS_N_CORE;
+	assign VS_N      = ld_scr ? ~(ld_v >= 9'd236 && ld_v < 9'd239) : VS_N_CORE;
+	assign FIELD     = ld_scr ? 1'b0 : FIELD_CORE;
+	assign INTERLACE = ld_scr ? 1'b0 : INTERLACE_CORE;
+	assign HRES      = ld_scr ? 2'd0 : HRES_CORE;
+	assign VRES      = ld_scr ? 2'd0 : VRES_CORE;
 `ifndef STV_BUILD
 	assign AUDIO_L = SOUND_L;
 	assign AUDIO_R = SOUND_R;
@@ -1285,8 +1332,17 @@ module emu
 
 	//DDRAM
 	always @(posedge clk_sys) begin
-		ioctl_wait <= (bios_download && bios_busy) || (cart_download && bios_busy) || (save_download && bsram_busy) || (save_upload && bsram_busy);
+		ioctl_wait <= (bios_download && bios_busy) || (cart_download && bios_busy) || (save_download && bsram_busy) || (save_upload && bsram_busy)
+`ifndef STV_BUILD
+		              || bk_init
+`endif
+		              ;
 	end
+`ifndef STV_BUILD
+	reg         bk_init = 0, bk_init_done = 0, bk_init_req = 0;
+	reg  [15:1] bk_init_addr = '0;
+	wire [ 7:0] bk_init_byte;
+`endif
 	wire [26: 1] IO_ADDR = cart_download ? {1'b1,ioctl_addr[25:1]} : {8'b00000000,ioctl_addr[18:1]};
 	wire [15: 0] IO_DATA = {ioctl_data[7:0],ioctl_data[15:8]};
 	wire         IO_WR = (bios_download | cart_download) & ioctl_wr;
@@ -1414,10 +1470,10 @@ module emu
 		
 		//SRAM backup
 `ifndef STV_BUILD
-		.bsram_addr(sd_lba[11:7] ? {1'b1,sd_lba[10:7]-4'h1,sd_lba[6:0],tmpram_addr} : {5'b00000,sd_lba[6:0],tmpram_addr}),
-		.bsram_din ({8'hFF,tmpram_dout[15:8]}),
-		.bsram_wr  ({2{tmpram_req & bk_loading}}),
-		.bsram_rd  ((tmpram_req & ~bk_loading)),
+		.bsram_addr(bk_init ? {5'b00000,bk_init_addr} : sd_lba[11:7] ? {1'b1,sd_lba[10:7]-4'h1,sd_lba[6:0],tmpram_addr} : {5'b00000,sd_lba[6:0],tmpram_addr}),
+		.bsram_din (bk_init ? {8'hFF,bk_init_byte} : {8'hFF,tmpram_dout[15:8]}),
+		.bsram_wr  (bk_init ? {2{bk_init_req}} : {2{tmpram_req & bk_loading}}),
+		.bsram_rd  (~bk_init & tmpram_req & ~bk_loading),
 `else
 		.bsram_addr({5'b00000,ioctl_addr[15:1]}),
 		.bsram_din ({8'hFF,ioctl_data[15:8]}),
@@ -1708,6 +1764,38 @@ module emu
 		old_change <= bk_change;
 		if (bk_change && !old_change) sav_pending <= 1;
 		else if (bk_state) sav_pending <= 0;
+	end
+	
+	//Internal backup RAM without a mounted save file: the DDR3 holds random data and the BIOS
+	//stops on its "internal memory corrupted" warning, which a real console with a good battery
+	//never shows. At the first download after power-on (the BIOS), if no save is mounted, write a
+	//blank formatted memory ("BackUpRam Format" x4, then zeros), as a new save file from Main_MiSTer
+	//(saturn_fill_blanksave) or Mednafen. The download is held (ioctl_wait) until it is done. It is
+	//never rewritten afterwards (battery-backed); mounting a save file overwrites it as before.
+	localparam [127:0] BUP_FORMAT = "BackUpRam Format";
+	assign bk_init_byte = bk_init_addr[15:7] ? 8'h00 : BUP_FORMAT[{~bk_init_addr[4:1],3'b000} +: 8];
+	always @(posedge clk_sys) begin
+		reg st;
+		
+		if (bk_init_req && !bsram_busy) bk_init_req <= 0;
+		
+		if (!bk_init) begin
+			st <= 0;
+			bk_init_addr <= '0;
+			if (download && !bk_init_done && !bk_ena) bk_init <= 1;
+		end
+		else if (!st) begin
+			bk_init_req <= 1;
+			st <= 1;
+		end
+		else if (bk_init_req && !bsram_busy) begin
+			st <= 0;
+			if (&bk_init_addr) begin
+				bk_init <= 0;
+				bk_init_done <= 1;
+			end
+			else bk_init_addr <= bk_init_addr + 1'd1;
+		end
 	end
 
 	wire bk_save_a  = autosave & OSD_STATUS;
