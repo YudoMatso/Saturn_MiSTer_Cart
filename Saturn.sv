@@ -144,10 +144,6 @@ module emu
 		"h9-,Auto cartridge:        None;",
 		"hA-,Auto cartridge:     DRAM 1M;",
 		"hB-,Auto cartridge:     DRAM 4M;",
-		"hC-,ROM 32M: no CS0 write;",
-		"hD-,ROM 32M: CS0 WRITE SEEN!;",
-		"hE-,ROM 48M: no ROM write;",
-		"hF-,ROM 48M: ROM WRITE SEEN!;",
 		"O[35:33],Region,Japan,Taiwan,USA,Brazil,Korea,Asia,Europe,Auto;",
 `else
 		"ST-V;;",
@@ -333,7 +329,7 @@ module emu
 	);
 	
 `ifndef STV_BUILD
-	assign menumask = {(cart_type == 3'd7 && cart_rom48 && CART_CS0_WR), (cart_type == 3'd7 && cart_rom48 && !CART_CS0_WR), (cart_type == 3'd7 && !cart_rom48 && CART_CS0_WR), (cart_type == 3'd7 && !cart_rom48 && !CART_CS0_WR), (cart_sel == 3'd0 && cart_auto == 3'd3), (cart_sel == 3'd0 && cart_auto == 3'd2), (cart_sel == 3'd0 && cart_auto == 3'd0), (status[56:55] != 2'b00), ~lg_p2_ena, ~lg_p1_ena, snac, 1'b1, 1'b1, ~status[8], 1'b1, ~bk_ena};
+	assign menumask = {4'b0000, (cart_sel == 3'd0 && cart_auto == 3'd3), (cart_sel == 3'd0 && cart_auto == 3'd2), (cart_sel == 3'd0 && cart_auto == 3'd0), (status[56:55] != 2'b00), ~lg_p2_ena, ~lg_p1_ena, snac, 1'b1, 1'b1, ~status[8], 1'b1, ~bk_ena};
 `else
 	assign menumask = {(status[56:55] != 2'b00), 1'b1, 1'b1, ~status[75], 1'b1, 1'b1, ~status[8], ~STV_ALTBIOS, 1'b0};
 `endif
@@ -365,7 +361,6 @@ module emu
 	reg  [2:0] cart_auto_pending = 3'd0;
 	reg  [2:0] cart_auto = 3'd0;
 	wire [2:0] cart_type = (cart_sel == 3'd0) ? cart_auto : (cart_sel == 3'd6) ? 3'd0 : cart_sel;
-	wire       CART_CS0_WR;
 	
 	//ROM 32/48M: size of the loaded cartridge file (in words); > 32M maps the rest on CS1
 	reg [26:1] cart_rom_size = '0;
@@ -375,7 +370,6 @@ module emu
 		if (cart_download && !old_cart_download) cart_rom_size <= '0;
 		else if (cart_download && ioctl_wr) cart_rom_size <= {1'b0,ioctl_addr[25:1]} + 26'd1;
 	end
-	wire       cart_rom48 = cart_rom_size > 26'h1000000;
 `else
 	wire [2:0] cart_type = 3'd5;
 	wire bios_sel = status[30] & STV_ALTBIOS;
@@ -876,7 +870,6 @@ module emu
 `ifndef STV_BUILD
 		.CART_MODE(cart_type),
 		.CART_ROM_SIZE(cart_rom_size),
-		.CART_CS0_WR(CART_CS0_WR),
 `else
 		.STV_5881_MODE(STV_MODE[3:0] == 4'h1 ? STV_MODE[7:4] : 4'h0),
 		.STV_5838_MODE(STV_MODE[3:0] == 4'h2),

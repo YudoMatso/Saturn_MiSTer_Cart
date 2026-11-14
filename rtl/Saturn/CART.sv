@@ -29,9 +29,7 @@ module CART (
 	output     [15:0] MEM_DO,
 	output     [ 1:0] MEM_WE,
 	output            MEM_RD,
-	input             MEM_RDY,
-	
-	output reg        CS0_WR_DET
+	input             MEM_RDY
 );
 
 	wire [25:1] DRAM1M_ADDR = {6'b000000,AA[21],AA[18:1]};
@@ -64,17 +62,13 @@ module CART (
 	always @(posedge CLK or negedge RST_N) begin
 		if (!RST_N) begin
 			ABUS_WAIT <= 0;
-			CS0_WR_DET <= 0;
 		end else begin
 			if (!RES_N) begin
 				ABUS_WAIT <= 0;
 			end else begin
 				if ((!AWRL_N || !AWRU_N) && AWR_N_OLD) begin
-					if (ROM_SEL) begin
-						CS0_WR_DET <= 1;	//ROM: no effect, only flagged
-					end
-					else if (CART_ID_SEL || MODE == 3'h7) begin
-						
+					if (ROM_SEL || CART_ID_SEL || MODE == 3'h7) begin
+						//ROM 32/48M: writes have no effect
 					end
 					else if (CART_MEM_SEL || BACKUP_MEM_SEL) begin
 						case (MODE)
